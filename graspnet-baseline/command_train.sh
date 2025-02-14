@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 python train.py --camera realsense --log_dir logs/log_rs --batch_size 1 --dataset_root /ssd_scratch/mohit.g/GraspNet
