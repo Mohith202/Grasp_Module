@@ -1,0 +1,17 @@
+[user]
+    name = Mohith202
+    email = mohitgoud2002@gmail.com
+
+[core]
+    editor = vim
+
+[alias]
+    co = checkout
+    br = branch
+    ci = commit
+    st = status
+    lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative
+
+
+  git config --global user.email "mohitgoud2002@gmail.com"
+  git config --global user.name "Mohith202"
