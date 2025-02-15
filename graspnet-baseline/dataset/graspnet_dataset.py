@@ -14,7 +14,7 @@ from tqdm import tqdm
 import collections.abc as container_abcs
 import torchvision.transforms as transforms
 
-BASE_DIR = "/ssd_scratch/mohit.g/GraspNet"
+BASE_DIR = "/ssd_scratch/mohit.g"
 ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 from data_utils import CameraInfo, transform_point_cloud, create_point_cloud_from_depth_image,\
@@ -262,12 +262,12 @@ class GraspNetDataset(Dataset):
         ret_dict['grasp_tolerance_list'] = grasp_tolerance_list
         # ret_dict['image_path'] = self.colorpath[index]
 
-        # Load and transform the image
-        image_path = self.colorpath[index]
-        image = Image.open(image_path).convert('RGB')
-        image_tensor = self.image_transforms(image)
+        # # Load and transform the image
+        # image_path = self.colorpath[index]
+        # image = Image.open(image_path).convert('RGB')
+        # image_tensor = self.image_transforms(image)
         
-        ret_dict['image'] = image_tensor
+        # ret_dict['image'] = image_tensor
         
         return ret_dict
 
@@ -295,28 +295,48 @@ def load_grasp_labels(root):
     return valid_obj_idxs, grasp_labels
 
 def collate_fn(batch):
-    elem_type = type(batch[0])
-    if isinstance(batch[0], torch.Tensor):
-        # Stack tensors directly
-        return torch.stack(batch, 0)
-    elif elem_type.__module__ == 'numpy':
-        # Convert numpy arrays to tensors and stack
-        return torch.stack([torch.from_numpy(b) for b in batch], 0)
-    elif isinstance(batch[0], int):
+    elem = batch[0]
+    elem_type = type(elem)
+
+    if isinstance(elem, torch.Tensor):
+        out = None
+        if torch.utils.data.get_worker_info() is not None:
+            # If we're in a background process, concatenate directly into a
+            # shared memory tensor to avoid an extra copy
+            numel = sum([x.numel() for x in batch])
+            storage = elem.storage()._new_shared(numel)
+            out = elem.new(storage)
+        return torch.stack(batch, 0, out=out)
+    elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
+            and elem_type.__name__ != 'string_':
+        if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
+            # array of string classes and object
+            if np_str_obj_array_pattern.search(elem.dtype.str) is not None:
+                raise TypeError(default_collate_err_msg_format.format(elem.dtype))
+
+            return collate_fn([torch.as_tensor(b) for b in batch])
+        elif elem.shape == ():  # scalars
+            return torch.as_tensor(batch)
+    elif isinstance(elem, float):
+        return torch.tensor(batch, dtype=torch.float64)
+    elif isinstance(elem, int):
         return torch.tensor(batch)
-    elif isinstance(batch[0], float):
-        return torch.tensor(batch, dtype=torch.float32)
-    elif isinstance(batch[0], str):
+    elif isinstance(elem, string_classes):
         return batch
-    elif isinstance(batch[0], container_abcs.Mapping):
-        # Recursively handle dictionary
-        return {key: collate_fn([d[key] for d in batch]) for key in batch[0]}
-    elif isinstance(batch[0], container_abcs.Sequence):
-        # Recursively handle each sequence
+    elif isinstance(elem, container_abcs.Mapping):
+        return {key: collate_fn([d[key] for d in batch]) for key in elem}
+    elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple
+        return elem_type(*(collate_fn(samples) for samples in zip(*batch)))
+    elif isinstance(elem, container_abcs.Sequence):
+        # check to make sure that the elements in batch have consistent size
+        it = iter(batch)
+        elem_size = len(next(it))
+        if not all(len(elem) == elem_size for elem in it):
+            raise RuntimeError('each element in list of batch should be of equal size')
         transposed = zip(*batch)
         return [collate_fn(samples) for samples in transposed]
 
-    raise TypeError(f"Unsupported data type: {elem_type.__name__}")
+    raise TypeError(default_collate_err_msg_format.format(elem_type))
 
 if __name__ == "__main__":
     root = '/data/Benchmark/graspnet'

@@ -48,8 +48,8 @@ LR_DECAY_RATES = [float(x) for x in cfgs.lr_decay_rates.split(',')]
 assert(len(LR_DECAY_STEPS)==len(LR_DECAY_RATES))
 DEFAULT_CHECKPOINT_PATH = os.path.join(cfgs.log_dir, 'checkpoint.tar')
 CHECKPOINT_PATH = cfgs.checkpoint_path if cfgs.checkpoint_path is not None \
-    else None
-    # else DEFAULT_CHECKPOINT_PATH
+    else DEFAULT_CHECKPOINT_PATH
+    # else None
 
 if not os.path.exists(cfgs.log_dir):
     os.makedirs(cfgs.log_dir)

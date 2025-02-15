@@ -41,14 +41,14 @@ from label_generation import process_grasp_labels, match_grasp_view_and_label, b
 class GraspNetStage1(nn.Module):
     def __init__(self, input_feature_dim=0, num_view=300):
         super().__init__()
-        self.backbone = Pointnet2BackboneWithAttentionAndCNN(input_feature_dim)
+        self.backbone = Pointnet2BackboneWithAttention(input_feature_dim)
         # self.image_backbone = ImageBackbone(input_feature_dim)
         self.vpmodule = ApproachNet(num_view, 256)
 
     def forward(self, end_points):
         pointcloud = end_points['point_clouds']
-        image = end_points['image']
-        seed_features, seed_xyz, end_points = self.backbone(pointcloud, image, end_points)
+        # image = end_points['image']
+        seed_features, seed_xyz, end_points = self.backbone(pointcloud, end_points)
         end_points = self.vpmodule(seed_xyz, seed_features, end_points)
         return end_points
 
