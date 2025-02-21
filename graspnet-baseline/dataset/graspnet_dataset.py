@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import scipy.io as scio
 from PIL import Image
-
+# from ultralytics import YOLO
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -53,7 +53,7 @@ class GraspNetDataset(Dataset):
         elif split == 'test_similar':
             self.sceneIds = list( range(130,160) )
         elif split == 'test_novel':
-            self.sceneIds = list( range(160,190) )
+            self.sceneIds = list( range(50,55) )
         self.sceneIds = ['scene_{}'.format(str(x).zfill(4)) for x in self.sceneIds]
         
         self.colorpath = []
@@ -116,6 +116,11 @@ class GraspNetDataset(Dataset):
         seg = np.array(Image.open(self.labelpath[index]))
         meta = scio.loadmat(self.metapath[index])
         scene = self.scenename[index]
+        # model = YOLO("yolo11n-seg.pt")
+        # results = model(color)
+        # for box in results.boxes:
+        #     print(box)
+        #     if box.cls == 11:
         try:
             intrinsic = meta['intrinsic_matrix']
             factor_depth = meta['factor_depth']
@@ -158,12 +163,12 @@ class GraspNetDataset(Dataset):
         ret_dict['point_clouds'] = cloud_sampled.astype(np.float32)
         ret_dict['cloud_colors'] = color_sampled.astype(np.float32)
 
-        # Load and transform the image
-        image_path = self.colorpath[index]
-        image = Image.open(image_path).convert('RGB')
-        image_tensor = self.image_transforms(image)
+        # # Load and transform the image
+        # image_path = self.colorpath[index]
+        # image = Image.open(image_path).convert('RGB')
+        # image_tensor = self.image_transforms(image)
         
-        ret_dict['image'] = image_tensor
+        # ret_dict['image'] = image_tensor
         
         return ret_dict
 
@@ -176,6 +181,7 @@ class GraspNetDataset(Dataset):
         try:
             obj_idxs = meta['cls_indexes'].flatten().astype(np.int32)
             poses = meta['poses']
+            # print(poses.shape,"poses,N,3,4")
             intrinsic = meta['intrinsic_matrix']
             factor_depth = meta['factor_depth']
         except Exception as e:
@@ -254,6 +260,7 @@ class GraspNetDataset(Dataset):
         ret_dict = {}
         ret_dict['point_clouds'] = cloud_sampled.astype(np.float32)
         ret_dict['cloud_colors'] = color_sampled.astype(np.float32)
+        ret_dict['rgb_colors'] = color.astype(np.float32)
         ret_dict['objectness_label'] = objectness_label.astype(np.int64)
         ret_dict['object_poses_list'] = object_poses_list
         ret_dict['grasp_points_list'] = grasp_points_list
@@ -271,16 +278,16 @@ class GraspNetDataset(Dataset):
         
         return ret_dict
 
-def load_grasp_labels(root):
+def load_grasp_labels(dataset_root):
     obj_names = [0, 2, 5, 7, 8, 9, 11, 14, 15, 17, 18, 20, 21, 22, 26, 29, 30, 34, 36, 37, 38, 40, 41, 43, 44, 46, 48, 51, 52, 56, 57, 58, 60, 61, 62, 63, 66, 69, 70]
     valid_obj_idxs = []
     grasp_labels = {}
-    
+    # print(dataset_root)
     for obj_name in tqdm(obj_names, desc='Loading grasping labels...'):
         valid_obj_idxs.append(obj_name + 1)  # Align with label png
-        print(obj_name)
-        label_path = os.path.join(root, 'grasp_label', f'{str(obj_name).zfill(3)}_labels.npz')
-        tolerance_path = os.path.join(BASE_DIR, 'tolerance', f'{str(obj_name).zfill(3)}_tolerance.npy')
+        # print(obj_name)
+        label_path = os.path.join(dataset_root, 'grasp_label', f'{str(obj_name).zfill(3)}_labels.npz')
+        tolerance_path = os.path.join(dataset_root, 'tolerance', f'{str(obj_name).zfill(3)}_tolerance.npy')
         
         label = np.load(label_path)
         tolerance = np.load(tolerance_path)
@@ -293,66 +300,32 @@ def load_grasp_labels(root):
         )
 
     return valid_obj_idxs, grasp_labels
-
 def collate_fn(batch):
-    elem = batch[0]
-    elem_type = type(elem)
-
-    if isinstance(elem, torch.Tensor):
-        out = None
-        if torch.utils.data.get_worker_info() is not None:
-            # If we're in a background process, concatenate directly into a
-            # shared memory tensor to avoid an extra copy
-            numel = sum([x.numel() for x in batch])
-            storage = elem.storage()._new_shared(numel)
-            out = elem.new(storage)
-        return torch.stack(batch, 0, out=out)
-    elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
-            and elem_type.__name__ != 'string_':
-        if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
-            # array of string classes and object
-            if np_str_obj_array_pattern.search(elem.dtype.str) is not None:
-                raise TypeError(default_collate_err_msg_format.format(elem.dtype))
-
-            return collate_fn([torch.as_tensor(b) for b in batch])
-        elif elem.shape == ():  # scalars
-            return torch.as_tensor(batch)
-    elif isinstance(elem, float):
-        return torch.tensor(batch, dtype=torch.float64)
-    elif isinstance(elem, int):
-        return torch.tensor(batch)
-    elif isinstance(elem, string_classes):
-        return batch
-    elif isinstance(elem, container_abcs.Mapping):
-        return {key: collate_fn([d[key] for d in batch]) for key in elem}
-    elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple
-        return elem_type(*(collate_fn(samples) for samples in zip(*batch)))
-    elif isinstance(elem, container_abcs.Sequence):
-        # check to make sure that the elements in batch have consistent size
-        it = iter(batch)
-        elem_size = len(next(it))
-        if not all(len(elem) == elem_size for elem in it):
-            raise RuntimeError('each element in list of batch should be of equal size')
-        transposed = zip(*batch)
-        return [collate_fn(samples) for samples in transposed]
-
-    raise TypeError(default_collate_err_msg_format.format(elem_type))
+    if type(batch[0]).__module__ == 'numpy':
+        return torch.stack([torch.from_numpy(b) for b in batch], 0)
+    elif isinstance(batch[0], container_abcs.Mapping):
+        return {key:collate_fn([d[key] for d in batch]) for key in batch[0]}
+    elif isinstance(batch[0], container_abcs.Sequence):
+        return [[torch.from_numpy(sample) for sample in b] for b in batch]
+    
+    raise TypeError("batch must contain tensors, dicts or lists; found {}".format(type(batch[0])))
 
 if __name__ == "__main__":
-    root = '/data/Benchmark/graspnet'
-    valid_obj_idxs, grasp_labels = load_grasp_labels(root)
-    train_dataset = GraspNetDataset(root, valid_obj_idxs, grasp_labels, split='train', remove_outlier=True, remove_invisible=True, num_points=20000)
-    print(len(train_dataset))
+    # root = '/data/Benchmark/graspnet'
+    # valid_obj_idxs, grasp_labels = load_grasp_labels(root)
+    # train_dataset = GraspNetDataset(root, valid_obj_idxs, grasp_labels, split='train', remove_outlier=True, remove_invisible=True, num_points=20000)
+    # print(len(train_dataset))
 
-    end_points = train_dataset[233]
-    cloud = end_points['point_clouds']
-    seg = end_points['objectness_label']
-    print(cloud.shape)
-    print(cloud.dtype)
-    print(cloud[:,0].min(), cloud[:,0].max())
-    print(cloud[:,1].min(), cloud[:,1].max())
-    print(cloud[:,2].min(), cloud[:,2].max())
-    print(seg.shape)
-    print((seg>0).sum())
-    print(seg.dtype)
-    print(np.unique(seg))
+    # end_points = train_dataset[233]
+    # cloud = end_points['point_clouds']
+    # seg = end_points['objectness_label']
+    # print(cloud.shape)
+    # print(cloud.dtype)
+    # print(cloud[:,0].min(), cloud[:,0].max())
+    # print(cloud[:,1].min(), cloud[:,1].max())
+    # print(cloud[:,2].min(), cloud[:,2].max())
+    # print(seg.shape)
+    # print((seg>0).sum())
+    # print(seg.dtype)
+    # print(np.unique(seg))
+    pass

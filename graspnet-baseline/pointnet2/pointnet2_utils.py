@@ -227,7 +227,7 @@ class GroupingOperation(Function):
 
         ctx.for_backwards = (idx, N)
 
-        return _ext.group_points(features, idx)
+        return _ext.group_points(features.contiguous(), idx)
 
     @staticmethod
     def backward(ctx, grad_out):
@@ -504,6 +504,7 @@ class CylinderQueryAndGroup(nn.Module):
         new_features : torch.Tensor
             (B, 3 + C, npoint, nsample) tensor
         """
+ 
         B, npoint, _ = new_xyz.size()
         idx = cylinder_query(self.radius, self.hmin, self.hmax, self.nsample, xyz, new_xyz, rot.view(B, npoint, 9))
 

@@ -15,7 +15,7 @@ sys.path.append(ROOT_DIR)
 sys.path.append(os.path.join(ROOT_DIR, 'pointnet2'))
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 
-from backbone import Pointnet2Backbone, Pointnet2BackboneWithAttention, Pointnet2BackboneWithAttentionAndCNN
+from backbone import Pointnet2Backbone, Pointnet2BackboneWithAttention, Pointnet2BackboneWithAttentionAndCNN, Pointnet2BackboneWithMultiAttentionFully
 from modules import ApproachNet, CloudCrop, OperationNet, ToleranceNet
 from loss import get_loss
 from loss_utils import GRASP_MAX_WIDTH, GRASP_MAX_TOLERANCE
@@ -42,12 +42,17 @@ class GraspNetStage1(nn.Module):
     def __init__(self, input_feature_dim=0, num_view=300):
         super().__init__()
         self.backbone = Pointnet2BackboneWithAttention(input_feature_dim)
-        # self.image_backbone = ImageBackbone(input_feature_dim)
         self.vpmodule = ApproachNet(num_view, 256)
 
     def forward(self, end_points):
         pointcloud = end_points['point_clouds']
-        # image = end_points['image']
+        if pointcloud is None or not pointcloud.size(0):
+            raise ValueError("Input pointcloud is empty or None")
+        
+        # Ensure the tensor is on the correct device
+        # device = next(self.parameters()).device
+        # pointcloud = pointcloud.to(device)
+        
         seed_features, seed_xyz, end_points = self.backbone(pointcloud, end_points)
         end_points = self.vpmodule(seed_xyz, seed_features, end_points)
         return end_points
@@ -87,7 +92,8 @@ class GraspNet(nn.Module):
 
     def forward(self, end_points):
         end_points = self.view_estimator(end_points)
-        if self.is_training:
+        if self.is_training :
+            # if isinstance(self, torch.nn.DataParallel):
             end_points = process_grasp_labels(end_points)
         end_points = self.grasp_generator(end_points)
         return end_points

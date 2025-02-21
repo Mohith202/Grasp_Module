@@ -29,8 +29,8 @@ def process_grasp_labels(end_points):
     batch_grasp_tolerance = []
     for i in range(len(clouds)):
         seed_xyz = seed_xyzs[i] #(Ns, 3)
+        # print(len(end_points['object_poses_list'][i]),"poses,N,3,4")
         poses = end_points['object_poses_list'][i] #[(3, 4),]
-
         # get merged grasp points for label computation
         grasp_points_merged = []
         grasp_views_merged = []
@@ -39,6 +39,7 @@ def process_grasp_labels(end_points):
         grasp_offsets_merged = []
         grasp_tolerance_merged = []
         for obj_idx, pose in enumerate(poses):
+            # print(pose.shape,"pose,3,4 and object idx",obj_idx)
             grasp_points = end_points['grasp_points_list'][i][obj_idx] #(Np, 3)
             grasp_labels = end_points['grasp_labels_list'][i][obj_idx] #(Np, V, A, D)
             grasp_offsets = end_points['grasp_offsets_list'][i][obj_idx] #(Np, V, A, D, 3)
@@ -47,19 +48,34 @@ def process_grasp_labels(end_points):
             num_grasp_points = grasp_points.size(0)
             # generate and transform template grasp views
             grasp_views = generate_grasp_views(V).to(pose.device) #(V, 3)
+            # print(grasp_views.shape,"grasp_views,V,3")
             grasp_points_trans = transform_point_cloud(grasp_points, pose, '3x4')
             grasp_views_trans = transform_point_cloud(grasp_views, pose[:3,:3], '3x3')
             # generate and transform template grasp view rotation
+            # angles = torch.zeros(grasp_views.size(0), dtype=grasp_views.dtype, device=grasp_views.device)
             angles = torch.zeros(grasp_views.size(0), dtype=grasp_views.dtype, device=grasp_views.device)
+
+
+
+
             grasp_views_rot = batch_viewpoint_params_to_matrix(-grasp_views, angles) #(V, 3, 3)
-            grasp_views_rot_trans = torch.matmul(pose[:3,:3], grasp_views_rot) #(V, 3, 3)
-            
+
+            pose_expanded = pose[:3,:3].squeeze(0)
+            pose_expanded = pose_expanded[:3,:3]
+            # only when data parallel is on
+            # pose_expanded = pose[:3,:3]
+            grasp_views_rot_trans = torch.matmul(pose_expanded, grasp_views_rot) #(V, 3, 3)
+
+
+
+
+
             # assign views
             grasp_views_ = grasp_views.transpose(0, 1).contiguous().unsqueeze(0)
             grasp_views_trans_ = grasp_views_trans.transpose(0, 1).contiguous().unsqueeze(0)
             view_inds = knn(grasp_views_trans_, grasp_views_, k=1).squeeze() - 1
             grasp_views_trans = torch.index_select(grasp_views_trans, 0, view_inds) #(V, 3)
-            grasp_views_trans = grasp_views_trans.unsqueeze(0).expand(num_grasp_points, -1, -1) #(Np, V, 3)
+            grasp_views_trans = grasp_views_trans.unsqueeze(0).squeeze(-1).expand(num_grasp_points, -1, -1) #(Np, V, 3)
             grasp_views_rot_trans = torch.index_select(grasp_views_rot_trans, 0, view_inds) #(V, 3, 3)
             grasp_views_rot_trans = grasp_views_rot_trans.unsqueeze(0).expand(num_grasp_points, -1, -1, -1) #(Np, V, 3, 3)
             grasp_labels = torch.index_select(grasp_labels, 1, view_inds) #(Np, V, A, D)
@@ -102,8 +118,10 @@ def process_grasp_labels(end_points):
         batch_grasp_tolerance.append(grasp_tolerance_merged)
 
     batch_grasp_points = torch.stack(batch_grasp_points, 0) #(B, Ns, 3)
+    batch_grasp_points = batch_grasp_points.squeeze(-1)
     batch_grasp_views = torch.stack(batch_grasp_views, 0) #(B, Ns, V, 3)
     batch_grasp_views_rot = torch.stack(batch_grasp_views_rot, 0) #(B, Ns, V, 3, 3)
+    # print(batch_grasp_views_rot.shape,"After stacking, batch_grasp_views_rot")
     batch_grasp_labels = torch.stack(batch_grasp_labels, 0) #(B, Ns, V, A, D)
     batch_grasp_offsets = torch.stack(batch_grasp_offsets, 0) #(B, Ns, V, A, D, 3)
     batch_grasp_tolerance = torch.stack(batch_grasp_tolerance, 0) #(B, Ns, V, A, D)
@@ -133,10 +151,13 @@ def match_grasp_view_and_label(end_points):
     grasp_labels = end_points['batch_grasp_label'] # (B, Ns, V, A, D)
     grasp_offsets = end_points['batch_grasp_offset'] # (B, Ns, V, A, D, 3)
     grasp_tolerance = end_points['batch_grasp_tolerance'] # (B, Ns, V, A, D)
-
+    # print(template_views_rot.shape,"template_views_rot")
+    # print(top_view_inds.shape,"top_view_inds")
     B, Ns, V, A, D = grasp_labels.size()
     top_view_inds_ = top_view_inds.view(B, Ns, 1, 1, 1).expand(-1, -1, -1, 3, 3)
+    # print(top_view_inds_.shape,"top_view_inds_, After expand")
     top_template_views_rot = torch.gather(template_views_rot, 2, top_view_inds_).squeeze(2)
+    # print(top_template_views_rot.shape,"top_template_views_rot")
     top_view_inds_ = top_view_inds.view(B, Ns, 1, 1, 1).expand(-1, -1, -1, A, D)
     top_view_grasp_labels = torch.gather(grasp_labels, 2, top_view_inds_).squeeze(2)
     top_view_grasp_tolerance = torch.gather(grasp_tolerance, 2, top_view_inds_).squeeze(2)
