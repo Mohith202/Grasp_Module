@@ -51,15 +51,24 @@ def process_grasp_labels(end_points):
             grasp_views_trans = transform_point_cloud(grasp_views, pose[:3,:3], '3x3')
             # generate and transform template grasp view rotation
             angles = torch.zeros(grasp_views.size(0), dtype=grasp_views.dtype, device=grasp_views.device)
+
+
+
             grasp_views_rot = batch_viewpoint_params_to_matrix(-grasp_views, angles) #(V, 3, 3)
-            grasp_views_rot_trans = torch.matmul(pose[:3,:3], grasp_views_rot) #(V, 3, 3)
-            
+            pose_expanded = pose[:3,:3].squeeze(0)
+            pose_expanded = pose_expanded[:3,:3]
+            # only when data parallel is on
+            # pose_expanded = pose[:3,:3]
+      
+            grasp_views_rot_trans = torch.matmul(pose_expanded, grasp_views_rot) #(V, 3, 3)
+
+
             # assign views
             grasp_views_ = grasp_views.transpose(0, 1).contiguous().unsqueeze(0)
             grasp_views_trans_ = grasp_views_trans.transpose(0, 1).contiguous().unsqueeze(0)
             view_inds = knn(grasp_views_trans_, grasp_views_, k=1).squeeze() - 1
             grasp_views_trans = torch.index_select(grasp_views_trans, 0, view_inds) #(V, 3)
-            grasp_views_trans = grasp_views_trans.unsqueeze(0).expand(num_grasp_points, -1, -1) #(Np, V, 3)
+            grasp_views_trans = grasp_views_trans.unsqueeze(0).squeeze(-1).expand(num_grasp_points, -1, -1) #(Np, V, 3)
             grasp_views_rot_trans = torch.index_select(grasp_views_rot_trans, 0, view_inds) #(V, 3, 3)
             grasp_views_rot_trans = grasp_views_rot_trans.unsqueeze(0).expand(num_grasp_points, -1, -1, -1) #(Np, V, 3, 3)
             grasp_labels = torch.index_select(grasp_labels, 1, view_inds) #(Np, V, A, D)
@@ -116,7 +125,7 @@ def process_grasp_labels(end_points):
     batch_grasp_labels[~label_mask] = 0
     batch_grasp_view_scores, _ = batch_grasp_labels.view(batch_size, num_samples, V, A*D).max(dim=-1)
 
-    end_points['batch_grasp_point'] = batch_grasp_points
+    end_points['batch_grasp_point'] = batch_grasp_points.squeeze(-1)
     end_points['batch_grasp_view'] = batch_grasp_views
     end_points['batch_grasp_view_rot'] = batch_grasp_views_rot
     end_points['batch_grasp_label'] = batch_grasp_labels

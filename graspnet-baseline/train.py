@@ -13,7 +13,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.nn import DataParallel
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 sys.path.append(os.path.join(ROOT_DIR, 'pointnet2'))
@@ -75,9 +75,9 @@ TEST_DATASET = GraspNetDataset(cfgs.dataset_root, valid_obj_idxs, grasp_labels, 
 
 print(len(TRAIN_DATASET), len(TEST_DATASET))
 TRAIN_DATALOADER = DataLoader(TRAIN_DATASET, batch_size=cfgs.batch_size, shuffle=True,
-    num_workers=20, worker_init_fn=my_worker_init_fn, collate_fn=collate_fn)
+    num_workers=0, worker_init_fn=my_worker_init_fn, collate_fn=collate_fn)
 TEST_DATALOADER = DataLoader(TEST_DATASET, batch_size=cfgs.batch_size, shuffle=False,
-    num_workers=20, worker_init_fn=my_worker_init_fn, collate_fn=collate_fn)
+    num_workers=0, worker_init_fn=my_worker_init_fn, collate_fn=collate_fn)
 print(len(TRAIN_DATALOADER), len(TEST_DATALOADER))
 
 
@@ -85,8 +85,8 @@ print(len(TRAIN_DATALOADER), len(TEST_DATALOADER))
 # Init the model and optimzier
 net = GraspNet(input_feature_dim=0, num_view=cfgs.num_view, num_angle=12, num_depth=4,
                         cylinder_radius=0.05, hmin=-0.02, hmax_list=[0.01,0.02,0.03,0.04])
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+net = DataParallel(net)
 
 net.to(device)
 # Load the Adam optimizer
@@ -143,6 +143,10 @@ def train_one_epoch():
                 for i in range(len(batch_data_label[key])):
                     for j in range(len(batch_data_label[key][i])):
                         batch_data_label[key][i][j] = batch_data_label[key][i][j].to(device)
+                        if key == 'object_poses_list' or key == 'seg_color' or key == 'rgb_colors':
+                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j]")
+                            batch_data_label[key][i][j] = batch_data_label[key][i][j].unsqueeze(0).to(device)
+                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j] after squeeze")
             else:
                 batch_data_label[key] = batch_data_label[key].to(device)
 
@@ -231,6 +235,11 @@ def evaluate_one_epoch():
                 for i in range(len(batch_data_label[key])):
                     for j in range(len(batch_data_label[key][i])):
                         batch_data_label[key][i][j] = batch_data_label[key][i][j].to(device)
+                        if key == 'object_poses_list' or key == 'seg_color' or key == 'rgb_colors':
+                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j]")
+                            batch_data_label[key][i][j] = batch_data_label[key][i][j].unsqueeze(0).to(device)
+                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j] after squeeze")
+            
             else:
                 batch_data_label[key] = batch_data_label[key].to(device)
         

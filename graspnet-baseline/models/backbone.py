@@ -286,17 +286,17 @@ class Pointnet2BackboneWithAttentionAndCNN(nn.Module):
 
         return xyz, features
 
-    def forward(self, pointcloud: torch.cuda.FloatTensor, image: torch.cuda.FloatTensor, end_points=None):
+    def forward(self, pointcloud: torch.cuda.FloatTensor, end_points=None):
         if not end_points: end_points = {}
         batch_size = pointcloud.shape[0]
 
         # Extract features from the image using CNN
-        cnn_features = self.cnn(image)  # Shape: [batch_size, feature_dim]
+        # cnn_features = self.cnn(image)  # Shape: [batch_size, feature_dim]
 
         # Verify that the number of points matches the number of features
         num_points = pointcloud.shape[1]
-        num_image_features = cnn_features.shape[1]
-        assert num_points == num_image_features, "Number of points in point cloud does not match number of features from image."
+        # num_image_features = cnn_features.shape[1]
+        # assert num_points == num_image_features, "Number of points in point cloud does not match number of features from image."
 
         # Break up point cloud
         xyz, features = self._break_up_pc(pointcloud)
@@ -325,19 +325,27 @@ class Pointnet2BackboneWithAttentionAndCNN(nn.Module):
         # --------- 2 FEATURE UPSAMPLING LAYERS --------
         features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features'])
         features = self.fp2(end_points['sa2_xyz'], end_points['sa3_xyz'], end_points['sa2_features'], features)
+
+        attn_output, _ = self.attention(features.permute(2, 0, 1), features.permute(2, 0, 1), features.permute(2, 0, 1))
+        features = attn_output.permute(1, 2, 0)  # Re-adjust dimensions back
+
+        # Extract features from the image using CNN
+        cnn_features = self.cnn(end_points['seg_color'].permute(0,3,1,2))  # Shape: [batch_size, feature_dim]
+        cnn_rgb_features = self.cnn(end_points['rgb_colors'].permute(0,3,1,2))  # Shape: [batch_size, feature_dim]
+
+        # Combine CNN features with PointNet++ features
+        # combined_features = torch.cat((features, cnn_features.unsqueeze(2).expand(-1, -1, features.size(2))), dim=1)
+
+        end_points['cnn_rgb_features'] = cnn_rgb_features
+        end_points['cnn_features'] = cnn_features
+
         end_points['fp2_features'] = features
         end_points['fp2_xyz'] = end_points['sa2_xyz']
         num_seed = end_points['fp2_xyz'].shape[1]
         end_points['fp2_inds'] = end_points['sa1_inds'][:,0:num_seed] # indices among the entire input point clouds
 
-        # Combine CNN features with PointNet++ features
-        # Assuming cnn_features need to be expanded or reshaped to match features dimensions
-        combined_features = torch.cat((features, cnn_features.unsqueeze(2).expand(-1, -1, features.size(2))), dim=1)
 
-        # Pass combined features through the attention mechanism
-        # Adjust dimensions as necessary for the attention layer
-        attn_output, _ = self.attention(combined_features.permute(2, 0, 1), combined_features.permute(2, 0, 1), combined_features.permute(2, 0, 1))
-        features = attn_output.permute(1, 2, 0)  # Re-adjust dimensions back
+
 
         return features, end_points['fp2_xyz'], end_points
 
@@ -359,5 +367,6 @@ class SimpleCNN(nn.Module):
     def forward(self, x):
         x = self.features(x)
         x = self.flatten(x)
-        x = self.fc(x)
+        print(x.shape)
+        # x = self.fc(x)
         return x

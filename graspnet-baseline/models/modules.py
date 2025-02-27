@@ -159,14 +159,14 @@ class OperationNet(nn.Module):
         super().__init__()
         self.num_angle = num_angle
         self.num_depth = num_depth
-
+        self.conv0 = nn.Conv1d(512, 256, 1)
         self.conv1 = nn.Conv1d(256, 128, 1)
         self.conv2 = nn.Conv1d(128, 128, 1)
         self.conv3 = nn.Conv1d(128, 3*num_angle, 1)
         self.bn1 = nn.BatchNorm1d(128)
         self.bn2 = nn.BatchNorm1d(128)
 
-    def forward(self, vp_features, end_points):
+    def forward(self, vp_features,cnn_feature,cnn_rgb_feature, end_points):
         """ Forward pass.
 
             Input:
@@ -178,6 +178,12 @@ class OperationNet(nn.Module):
                 end_points: [dict]
         """
         B, _, num_seed, num_depth = vp_features.size()
+        cnn_features = end_points['cnn_features']
+
+        cnn_rgb_features = end_points['cnn_rgb_features']
+        cnn_features = cnn_features.view(B, -1, 1)
+        cnn_rgb_features = cnn_rgb_features.view(B, -1, 1)
+        combined_features = torch.cat((cnn_features, cnn_rgb_features), dim=1)
         vp_features = vp_features.view(B, -1, num_seed*num_depth)
         vp_features = F.relu(self.bn1(self.conv1(vp_features)), inplace=True)
         vp_features = F.relu(self.bn2(self.conv2(vp_features)), inplace=True)

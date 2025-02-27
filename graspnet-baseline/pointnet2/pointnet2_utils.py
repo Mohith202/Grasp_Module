@@ -504,6 +504,7 @@ class CylinderQueryAndGroup(nn.Module):
         new_features : torch.Tensor
             (B, 3 + C, npoint, nsample) tensor
         """
+        # print(new_xyz.shape,"new_xyz.shape")
         B, npoint, _ = new_xyz.size()
         idx = cylinder_query(self.radius, self.hmin, self.hmax, self.nsample, xyz, new_xyz, rot.view(B, npoint, 9))
 
