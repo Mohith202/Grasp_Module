@@ -122,6 +122,7 @@ class CloudCrop(nn.Module):
                     features of grouped points in different depths
         """
         B, num_seed, _, _ = vp_rot.size()
+        # print(vp_rot.shape,"vp_rot")
         num_depth = len(self.groupers)
         grouped_features = []
         for grouper in self.groupers:

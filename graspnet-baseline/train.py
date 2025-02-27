@@ -31,7 +31,7 @@ parser.add_argument('--checkpoint_path', default=None, help='Model checkpoint pa
 parser.add_argument('--log_dir', default='log', help='Dump dir to save model checkpoint [default: log]')
 parser.add_argument('--num_point', type=int, default=20000, help='Point Number [default: 20000]')
 parser.add_argument('--num_view', type=int, default=300, help='View Number [default: 300]')
-parser.add_argument('--max_epoch', type=int, default=18, help='Epoch to run [default: 18]')
+parser.add_argument('--max_epoch', type=int, default=2, help='Epoch to run [default: 18]')
 parser.add_argument('--batch_size', type=int, default=2, help='Batch Size during training [default: 2]')
 parser.add_argument('--learning_rate', type=float, default=0.001, help='Initial learning rate [default: 0.001]')
 parser.add_argument('--weight_decay', type=float, default=0, help='Optimization L2 weight decay [default: 0]')
@@ -50,7 +50,7 @@ DEFAULT_CHECKPOINT_PATH = os.path.join(cfgs.log_dir, 'checkpoint.tar')
 CHECKPOINT_PATH = cfgs.checkpoint_path if cfgs.checkpoint_path is not None \
     else DEFAULT_CHECKPOINT_PATH
     # else None
-
+print(CHECKPOINT_PATH,"CHECKPOINT_PATH")
 if not os.path.exists(cfgs.log_dir):
     os.makedirs(cfgs.log_dir)
 
@@ -82,11 +82,11 @@ print(len(TRAIN_DATALOADER), len(TEST_DATALOADER))
 
 
 
-# Init the model and optimzier
+# Init the model and optimizer
 net = GraspNet(input_feature_dim=0, num_view=cfgs.num_view, num_angle=12, num_depth=4,
                         cylinder_radius=0.05, hmin=-0.02, hmax_list=[0.01,0.02,0.03,0.04])
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-net = DataParallel(net)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 net.to(device)
 # Load the Adam optimizer
@@ -139,17 +139,14 @@ def train_one_epoch():
     net.train()
     for batch_idx, batch_data_label in enumerate(TRAIN_DATALOADER):
         for key in batch_data_label:
-            if 'list' in key:
+            if 'list' in key :
                 for i in range(len(batch_data_label[key])):
                     for j in range(len(batch_data_label[key][i])):
                         batch_data_label[key][i][j] = batch_data_label[key][i][j].to(device)
-                        if key == 'object_poses_list' or key == 'seg_color' or key == 'rgb_colors':
-                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j]")
-                            batch_data_label[key][i][j] = batch_data_label[key][i][j].unsqueeze(0).to(device)
-                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j] after squeeze")
             else:
                 batch_data_label[key] = batch_data_label[key].to(device)
-
+                
+        # batch_data_label['object_poses_list'] = batch_data_label['object_poses_list'].unsqueeze(0).to(device)
         # Forward pass
         end_points = net(batch_data_label)
 
@@ -235,11 +232,6 @@ def evaluate_one_epoch():
                 for i in range(len(batch_data_label[key])):
                     for j in range(len(batch_data_label[key][i])):
                         batch_data_label[key][i][j] = batch_data_label[key][i][j].to(device)
-                        if key == 'object_poses_list' or key == 'seg_color' or key == 'rgb_colors':
-                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j]")
-                            batch_data_label[key][i][j] = batch_data_label[key][i][j].unsqueeze(0).to(device)
-                            # print(batch_data_label[key][i][j].shape,"batch_data_label[key][i][j] after squeeze")
-            
             else:
                 batch_data_label[key] = batch_data_label[key].to(device)
         
@@ -294,4 +286,4 @@ def train(start_epoch):
 
 if __name__=='__main__':
     train(start_epoch)
-    # evaluate_one_epoch()
+    evaluate_one_epoch()

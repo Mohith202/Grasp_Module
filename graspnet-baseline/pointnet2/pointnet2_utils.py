@@ -227,7 +227,7 @@ class GroupingOperation(Function):
 
         ctx.for_backwards = (idx, N)
 
-        return _ext.group_points(features, idx)
+        return _ext.group_points(features.contiguous(), idx)
 
     @staticmethod
     def backward(ctx, grad_out):

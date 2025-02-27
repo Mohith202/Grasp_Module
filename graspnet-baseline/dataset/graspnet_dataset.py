@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import scipy.io as scio
 from PIL import Image
-
+# from ultralytics import YOLO
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -53,7 +53,7 @@ class GraspNetDataset(Dataset):
         elif split == 'test_similar':
             self.sceneIds = list( range(130,160) )
         elif split == 'test_novel':
-            self.sceneIds = list( range(160,190) )
+            self.sceneIds = list( range(50,55) )
         self.sceneIds = ['scene_{}'.format(str(x).zfill(4)) for x in self.sceneIds]
         
         self.colorpath = []
@@ -116,6 +116,11 @@ class GraspNetDataset(Dataset):
         seg = np.array(Image.open(self.labelpath[index]))
         meta = scio.loadmat(self.metapath[index])
         scene = self.scenename[index]
+        # model = YOLO("yolo11n-seg.pt")
+        # results = model(color)
+        # for box in results.boxes:
+        #     print(box)
+        #     if box.cls == 11:
         try:
             intrinsic = meta['intrinsic_matrix']
             factor_depth = meta['factor_depth']
@@ -176,6 +181,7 @@ class GraspNetDataset(Dataset):
         try:
             obj_idxs = meta['cls_indexes'].flatten().astype(np.int32)
             poses = meta['poses']
+            # print(poses.shape,"poses,N,3,4")
             intrinsic = meta['intrinsic_matrix']
             factor_depth = meta['factor_depth']
         except Exception as e:
@@ -275,11 +281,11 @@ class GraspNetDataset(Dataset):
         
         return ret_dict
 
-def load_grasp_labels(root):
+def load_grasp_labels(dataset_root):
     obj_names = [0, 2, 5, 7, 8, 9, 11, 14, 15, 17, 18, 20, 21, 22, 26, 29, 30, 34, 36, 37, 38, 40, 41, 43, 44, 46, 48, 51, 52, 56, 57, 58, 60, 61, 62, 63, 66, 69, 70]
     valid_obj_idxs = []
     grasp_labels = {}
-    
+    # print(dataset_root)
     for obj_name in tqdm(obj_names, desc='Loading grasping labels...'):
         valid_obj_idxs.append(obj_name + 1)  # Align with label png
         print(obj_name)
@@ -297,7 +303,6 @@ def load_grasp_labels(root):
         )
 
     return valid_obj_idxs, grasp_labels
-
 def collate_fn(batch):
     if type(batch[0]).__module__ == 'numpy':
             return torch.stack([torch.from_numpy(b) for b in batch], 0)
