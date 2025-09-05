@@ -1,4 +1,4 @@
-# CNN-Based Grasp Detection with Attention Mechanism on GraspNet Dataset
+# CNN-Based Grasp Detection with Attention Mechanism on GraspNet Dataset (forked form Graspnet repo)
 
 ## Abstract
 This project presents a hybrid approach for robotic grasp detection by combining **CNN-based image segmentation** and a **simple attention mechanism** for robust feature extraction. These modules were evaluated in conjunction with the **GraspNet baseline architecture**. The final model demonstrated an improvement in **Average Precision (AP)**, reaching **55%**, by effectively identifying graspable regions on seen objects.
